@@ -148,7 +148,7 @@ class iCaRLmodel:
                 images, target = images.to(device), target.to(device)
 
                 ce_loss, dist_loss = self._compute_loss_with_hook(indexs, images, target)
-                loss_value = ce_loss + dist_loss
+                loss_value = ce_loss + dist_loss / 50000.0
 
                 # loss_value = self._compute_loss(indexs, images, target)
                 # ce_loss = torch.zeros(1)
@@ -162,7 +162,7 @@ class iCaRLmodel:
 
             accuracy = self._test(self.test_loader, 1)
             print('epoch:%d,accuracy:%.3f' % (epoch, accuracy))
-        
+
         self.old_importance = self.model.feature.get_importance()
         self.old_importance = [(x / x.mean()).detach() for x in self.old_importance]
         self.model.feature.stop_cal_importance()
@@ -198,15 +198,15 @@ class iCaRLmodel:
             return F.binary_cross_entropy_with_logits(output, target)
 
     def _compute_loss_with_hook(self, indexs, imgs, target, importance=None):
+        one_hot_label = get_one_hot(target, self.numclass)
         if self.old_model is None:
-            return self._compute_loss(indexs, imgs, target), torch.zeros(1).to(device)
+            output, _, _ = self.model.forward_with_hook(imgs)
+            return F.binary_cross_entropy_with_logits(output, one_hot_label), torch.zeros(1).to(device)
 
         output_old, features_old, _ = self.old_model.forward_with_hook(imgs)
         features_old = [x.detach() for x in features_old]
 
-
         output, features, _ = self.model.forward_with_hook(imgs)
-        one_hot_label = get_one_hot(target, self.numclass)
         old_target = torch.sigmoid(output_old.detach())
         old_task_size = old_target.shape[1]
         one_hot_label[..., :old_task_size] = old_target
