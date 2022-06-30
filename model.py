@@ -1,3 +1,4 @@
+from multiprocessing.sharedctypes import Value
 import torch
 import torch.nn as nn
 import math
@@ -22,15 +23,16 @@ def conv3x3(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
 
+
 class ChannelAttention(nn.Module):
     def __init__(self, in_planes, ratio=16):
         super(ChannelAttention, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
 
-        self.fc1   = nn.Conv2d(in_planes, in_planes // 16, 1, bias=False)
+        self.fc1 = nn.Conv2d(in_planes, in_planes // 16, 1, bias=False)
         self.relu1 = nn.ReLU()
-        self.fc2   = nn.Conv2d(in_planes // 16, in_planes, 1, bias=False)
+        self.fc2 = nn.Conv2d(in_planes // 16, in_planes, 1, bias=False)
 
         self.sigmoid = nn.Sigmoid()
 
@@ -39,6 +41,7 @@ class ChannelAttention(nn.Module):
         max_out = self.fc2(self.relu1(self.fc1(self.max_pool(x))))
         out = avg_out + max_out
         return self.sigmoid(out)
+
 
 class SpatialAttention(nn.Module):
     def __init__(self, kernel_size=7):
@@ -51,7 +54,7 @@ class SpatialAttention(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        #print('输入的shape为:'+str(x.shape))
+        # print('输入的shape为:'+str(x.shape))
         avg_out = torch.mean(x, dim=1, keepdim=True)
         #print('avg_out的shape为:' + str(avg_out.shape))
         max_out, _ = torch.max(x, dim=1, keepdim=True)
@@ -59,6 +62,7 @@ class SpatialAttention(nn.Module):
         x = torch.cat([avg_out, max_out], dim=1)
         x = self.conv1(x)
         return self.sigmoid(x)
+
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -71,8 +75,8 @@ class BasicBlock(nn.Module):
         self.conv2 = conv3x3(planes, planes)
         self.bn2 = nn.BatchNorm2d(planes)
 
-        self.ca = ChannelAttention(planes)
-        self.sa = SpatialAttention()
+        # self.ca = ChannelAttention(planes)
+        # self.sa = SpatialAttention()
 
         self.downsample = downsample
         self.stride = stride
@@ -113,8 +117,8 @@ class Bottleneck(nn.Module):
         self.bn3 = nn.BatchNorm2d(planes * 4)
         self.relu = nn.ReLU(inplace=True)
 
-        self.ca = ChannelAttention(planes * 4)
-        self.sa = SpatialAttention()
+        # self.ca = ChannelAttention(planes * 4)
+        # self.sa = SpatialAttention()
 
         self.downsample = downsample
         self.stride = stride
@@ -133,8 +137,8 @@ class Bottleneck(nn.Module):
         out = self.conv3(out)
         out = self.bn3(out)
 
-        out = self.ca(out) * out
-        out = self.sa(out) * out
+        # out = self.ca(out) * out
+        # out = self.sa(out) * out
 
         if self.downsample is not None:
             residual = self.downsample(x)
@@ -191,16 +195,13 @@ class ResNet(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        #x = self.maxpool(x)
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
         x = self.feature(x)
         x = x.view(x.size(0), -1)
-        #y=torch.norm(x,p=2,dim=1,keepdim=True)
-        #x/=y
-        #x = self.fc(x)
+
 
         return x
 
@@ -213,7 +214,7 @@ def resnet18_cbam(pretrained=False, **kwargs):
     model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
     if pretrained:
         pretrained_state_dict = model_zoo.load_url(model_urls['resnet18'])
-        now_state_dict        = model.state_dict()
+        now_state_dict = model.state_dict()
         now_state_dict.update(pretrained_state_dict)
         model.load_state_dict(now_state_dict)
     return model
@@ -227,7 +228,7 @@ def resnet34_cbam(pretrained=False, **kwargs):
     model = ResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
     if pretrained:
         pretrained_state_dict = model_zoo.load_url(model_urls['resnet34'])
-        now_state_dict        = model.state_dict()
+        now_state_dict = model.state_dict()
         now_state_dict.update(pretrained_state_dict)
         model.load_state_dict(now_state_dict)
     return model
@@ -241,7 +242,7 @@ def resnet50_cbam(pretrained=False, **kwargs):
     model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
     if pretrained:
         pretrained_state_dict = model_zoo.load_url(model_urls['resnet50'])
-        now_state_dict        = model.state_dict()
+        now_state_dict = model.state_dict()
         now_state_dict.update(pretrained_state_dict)
         model.load_state_dict(now_state_dict)
     return model
@@ -255,7 +256,7 @@ def resnet101_cbam(pretrained=False, **kwargs):
     model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
     if pretrained:
         pretrained_state_dict = model_zoo.load_url(model_urls['resnet101'])
-        now_state_dict        = model.state_dict()
+        now_state_dict = model.state_dict()
         now_state_dict.update(pretrained_state_dict)
         model.load_state_dict(now_state_dict)
     return model
@@ -269,7 +270,42 @@ def resnet152_cbam(pretrained=False, **kwargs):
     model = ResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
     if pretrained:
         pretrained_state_dict = model_zoo.load_url(model_urls['resnet152'])
-        now_state_dict        = model.state_dict()
+        now_state_dict = model.state_dict()
         now_state_dict.update(pretrained_state_dict)
         model.load_state_dict(now_state_dict)
     return model
+
+
+
+class Model(nn.Module):
+
+    def __init__(self, numclass, backbone):
+        super(Model, self).__init__()
+        if backbone == 'resnet18':
+            feature_extractor = resnet18_cbam()
+        elif backbone == 'resnet50':
+            feature_extractor = resnet50_cbam()
+        else:
+            raise ValueError("no such model")
+
+        self.feature = feature_extractor
+        self.fc = nn.Linear(
+            self.feature.fc.in_features, numclass, bias=True)
+
+    def forward(self, input):
+        x = self.feature(input)
+        x = self.fc(x)
+        return x
+
+    def Incremental_learning(self, numclass):
+        weight = self.fc.weight.data
+        bias = self.fc.bias.data
+        in_feature = self.fc.in_features
+        out_feature = self.fc.out_features
+
+        self.fc = nn.Linear(in_feature, numclass, bias=True)
+        self.fc.weight.data[:out_feature] = weight
+        self.fc.bias.data[:out_feature] = bias
+
+    def feature_extractor(self, inputs):
+        return self.feature(inputs)
