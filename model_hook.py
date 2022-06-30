@@ -262,6 +262,7 @@ class ResNet(nn.Module):
 
         x = self.feature(x)
         x = x.view(x.size(0), -1)
+        int_features.append(x)
         x = self.raw_features_importance(x)
 
         importance = [self.layer1_importance.importance,
@@ -272,12 +273,21 @@ class ResNet(nn.Module):
 
         return x, int_features, importance
 
+
+
     def start_cal_importance(self):
         self._hook = [self.layer1_importance.register_backward_hook(gradhook),
                       self.layer2_importance.register_backward_hook(gradhook),
                       self.layer3_importance.register_backward_hook(gradhook),
                       self.layer4_importance.register_backward_hook(gradhook),
                       self.raw_features_importance.register_backward_hook(gradhook)]
+
+    def get_importance(self):
+        return [self.layer1_importance.importance,
+                      self.layer2_importance.importance,
+                      self.layer3_importance.importance,
+                      self.layer4_importance.importance,
+                      self.raw_features_importance.importance]
 
 
     def reset_importance(self):

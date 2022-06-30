@@ -65,7 +65,7 @@ class iCaRLmodel:
 
         self.train_loader = None
         self.test_loader = None
-
+        self.old_importance = None
     # get incremental train data
     # incremental
     def beforeTrain(self):
@@ -110,6 +110,8 @@ class iCaRLmodel:
         accuracy = 0
         opt = optim.SGD(self.model.parameters(),
                         lr=self.learning_rate, weight_decay=0.00001)
+
+        self.model.feature.start_cal_importance()
         for epoch in range(self.epochs):
             if epoch == 48:
                 if self.numclass == self.task_size:
@@ -140,6 +142,8 @@ class iCaRLmodel:
                     #opt = optim.SGD(self.model.parameters(), lr=self.learning_rate / 125,weight_decay=0.00001,momentum=0.9,nesterov=True,)
                 print("change learning rate:%.3f" % (self.learning_rate / 100))
 
+
+            self.model.feature.reset_importance()
             for step, (indexs, images, target) in enumerate(self.train_loader):
                 images, target = images.to(device), target.to(device)
 
@@ -158,6 +162,10 @@ class iCaRLmodel:
 
             accuracy = self._test(self.test_loader, 1)
             print('epoch:%d,accuracy:%.3f' % (epoch, accuracy))
+        
+        self.old_importance = self.model.feature.get_importance()
+        self.old_importance = [(x / x.mean()).detach() for x in self.old_importance]
+        self.model.feature.stop_cal_importance()
         return accuracy
 
     def _test(self, testloader, mode):
@@ -189,18 +197,12 @@ class iCaRLmodel:
             target[..., :old_task_size] = old_target
             return F.binary_cross_entropy_with_logits(output, target)
 
-    def _compute_loss_with_hook(self, indexs, imgs, target):
+    def _compute_loss_with_hook(self, indexs, imgs, target, importance=None):
         if self.old_model is None:
             return self._compute_loss(indexs, imgs, target), torch.zeros(1).to(device)
 
-        self.old_model.feature.start_cal_importance()
-        self.old_model.feature.reset_importance()
-        output_old, features_old, importance_old = self.old_model.forward_with_hook(imgs)
-        old_ce_loss = F.cross_entropy(output_old, target)
-        old_ce_loss.backward()
-        importance_old = [(x / x.mean()).detach() for x in importance_old]
+        output_old, features_old, _ = self.old_model.forward_with_hook(imgs)
         features_old = [x.detach() for x in features_old]
-        self.old_model.feature.stop_cal_importance()
 
 
         output, features, _ = self.model.forward_with_hook(imgs)
@@ -212,7 +214,7 @@ class iCaRLmodel:
 
         B = output.size(0)
         dist_loss = [z.view(1, -1) * torch.norm(x.view(B, x.size(1), -1) - y.view(B, y.size(1), -1), p='fro', dim=(-1))
-            for x, y, z in zip(features, features_old, importance_old)]
+            for x, y, z in zip(features, features_old, self.old_importance)]
         dist_loss = sum([x.mean(dim=0).sum() for x in dist_loss])
         return ce_loss, dist_loss
 
