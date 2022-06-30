@@ -152,7 +152,7 @@ class iCaRLmodel:
                 opt.step()
 
                 print(f"epoch: {epoch:3d}, step {step:3d}, ce_loss {ce_loss.item():6.3f}, dist_loss {dist_loss.item():6.3f}, total_loss {loss_value.item():6.3f}")
-                
+
             accuracy = self._test(self.test_loader, 1)
             print('epoch:%d,accuracy:%.3f' % (epoch, accuracy))
         return accuracy
@@ -181,7 +181,6 @@ class iCaRLmodel:
         if self.old_model == None:
             return F.binary_cross_entropy_with_logits(output, target)
         else:
-            #old_target = torch.tensor(np.array([self.old_model_output[index.item()] for index in indexs]))
             old_target = torch.sigmoid(self.old_model(imgs))
             old_task_size = old_target.shape[1]
             target[..., :old_task_size] = old_target

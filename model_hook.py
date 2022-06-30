@@ -415,8 +415,8 @@ if __name__ == '__main__':
         output, features, importance = model.forward_with_hook(x)
         loss = nn.functional.cross_entropy(output, y)
         loss.backward()
-        
         print([x.abs().sum() for x in importance])
-
+        print([x.abs().sum() for x in features])
+        print("=============")
         model.feature.stop_cal_importance()
 
