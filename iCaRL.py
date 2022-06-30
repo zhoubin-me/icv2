@@ -148,7 +148,7 @@ class iCaRLmodel:
                 images, target = images.to(device), target.to(device)
 
                 ce_loss, dist_loss = self._compute_loss_with_hook(indexs, images, target)
-                loss_value = ce_loss + dist_loss / 50000.0
+                loss_value = ce_loss + dist_loss / 10000.0
 
                 # loss_value = self._compute_loss(indexs, images, target)
                 # ce_loss = torch.zeros(1)
