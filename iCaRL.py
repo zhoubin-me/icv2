@@ -142,10 +142,13 @@ class iCaRLmodel:
             
             for step, (indexs, images, target) in enumerate(self.train_loader):
                 images, target = images.to(device), target.to(device)
-                # loss_value = self._compute_loss(indexs, images, target)
 
                 ce_loss, dist_loss = self._compute_loss_with_hook(indexs, images, target)
                 loss_value = ce_loss + dist_loss
+
+                # loss_value = self._compute_loss(indexs, images, target)
+                # ce_loss = torch.zeros(1)
+                # dist_loss = torch.zeros(1)
 
                 opt.zero_grad()
                 loss_value.backward()
@@ -188,7 +191,7 @@ class iCaRLmodel:
 
     def _compute_loss_with_hook(self, indexs, imgs, target):
         if self.old_model is None:
-            return self._compute_loss(indexs, imgs, target)
+            return self._compute_loss(indexs, imgs, target), torch.zeros(1).to(device)
 
         self.old_model.feature.start_cal_importance()
         self.old_model.feature.reset_importance()
