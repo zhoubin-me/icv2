@@ -5,7 +5,7 @@ import numpy as np
 from torch.nn import functional as F
 from PIL import Image
 import torch.optim as optim
-from model import Model
+# from model import Model
 from model_hook import Model
 from iCIFAR100 import iCIFAR100
 from torch.utils.data import DataLoader
@@ -139,7 +139,7 @@ class iCaRLmodel:
                         p['lr'] = self.learning_rate / 125
                     #opt = optim.SGD(self.model.parameters(), lr=self.learning_rate / 125,weight_decay=0.00001,momentum=0.9,nesterov=True,)
                 print("change learning rate:%.3f" % (self.learning_rate / 100))
-            
+
             for step, (indexs, images, target) in enumerate(self.train_loader):
                 images, target = images.to(device), target.to(device)
 
@@ -195,7 +195,7 @@ class iCaRLmodel:
 
         self.old_model.feature.start_cal_importance()
         self.old_model.feature.reset_importance()
-        output_old, features_old, importance_old = self.old_model.foward_with_hook(imgs)
+        output_old, features_old, importance_old = self.old_model.forward_with_hook(imgs)
         old_ce_loss = F.cross_entropy(output_old, target)
         old_ce_loss.backward()
         importance_old = [(x / x.mean()).detach() for x in importance_old]
@@ -216,7 +216,7 @@ class iCaRLmodel:
         dist_loss = sum([x.mean(dim=0).sum() for x in dist_loss])
         return ce_loss, dist_loss
 
-    
+
 
     # change the size of examplar
     def afterTrain(self, accuracy):
@@ -232,7 +232,7 @@ class iCaRLmodel:
         self.model.train()
         KNN_accuracy = self._test(self.test_loader, 0)
         print("NMS accuracy："+str(KNN_accuracy.item()))
-        filename = 'model/accuracy:%.3f_KNN_accuracy:%.3f_increment:%d_net.pkl' % (
+        filename = 'model_with_hook/accuracy:%.3f_KNN_accuracy:%.3f_increment:%d_net.pkl' % (
             accuracy, KNN_accuracy, i + 10)
         torch.save(self.model, filename)
         self.old_model = torch.load(filename)
