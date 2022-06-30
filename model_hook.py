@@ -64,6 +64,21 @@ class SpatialAttention(nn.Module):
         return self.sigmoid(x)
 
 
+class Channel_Importance_Measure(nn.Module):
+    def __init__(self, num_channels):
+        super().__init__()
+        self.num_channels = num_channels
+        self.scale = nn.Parameter(torch.randn(num_channels), requires_grad=False)
+        nn.init.constant_(self.scale, 1.0)
+        self.register_buffer('importance', torch.zeros_like(self.scale))
+
+    def forward(self, x):
+        if len(x.shape) == 4:
+            x = x * self.scale.reshape([1,-1,1,1])
+        else:
+            x = x * self.scale.reshape([1,-1])
+        return x
+
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -159,11 +174,22 @@ class ResNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
         self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer1_importance = Channel_Importance_Measure(64 * block.expansion)
+
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
+        self.layer2_importance = Channel_Importance_Measure(128 * block.expansion)
+
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
+        self.layer3_importance = Channel_Importance_Measure(256 * block.expansion)
+
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+        self.layer4_importance = Channel_Importance_Measure(512 * block.expansion)
+
         self.feature = nn.AvgPool2d(4, stride=1)
+        self.raw_features_importance = Channel_Importance_Measure(512 * block.expansion)
+
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         for m in self.modules():
@@ -201,9 +227,62 @@ class ResNet(nn.Module):
         x = self.layer4(x)
         x = self.feature(x)
         x = x.view(x.size(0), -1)
-
-
         return x
+
+
+    def forwar_with_hook(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        int_features = []
+        x = self.layer1(x)
+        int_features.append(x)
+        x = self.layer1_importance(x)
+
+        x = self.layer2(x)
+        int_features.append(x)
+        x = self.layer2_importance(x)
+
+        x = self.layer3(x)
+        int_features.append(x)
+        x = self.layer3_importance(x)
+
+        x = self.layer4(x)
+        int_features.append(x)
+        x = self.layer4_importance(x)
+
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.raw_features_importance(x)
+
+        importance = [self.layer1_importance.importance,
+                      self.layer2_importance.importance,
+                      self.layer3_importance.importance,
+                      self.layer4_importance.importance,
+                      self.raw_features_importance.importance]
+
+        return x, int_features, importance
+
+    def start_cal_importance(self):
+        self._hook = [self.layer1_importance.register_backward_hook(gradhook),
+                      self.layer2_importance.register_backward_hook(gradhook),
+                      self.layer3_importance.register_backward_hook(gradhook),
+                      self.layer4_importance.register_backward_hook(gradhook),
+                      self.raw_features_importance.register_backward_hook(gradhook)]
+
+
+    def reset_importance(self):
+        self.layer1_importance.importance.zero_()
+        self.layer2_importance.importance.zero_()
+        self.layer3_importance.importance.zero_()
+        self.layer4_importance.importance.zero_()
+        self.raw_features_importance.importance.zero_()
+
+    def stop_cal_importance(self):
+        for hook in self._hook:
+            hook.remove()
+        self._hook = None
 
 
 def resnet18_cbam(pretrained=False, **kwargs):
@@ -296,6 +375,11 @@ class Model(nn.Module):
         x = self.feature(input)
         x = self.fc(x)
         return x
+
+    def forward_with_hook(self, input):
+        x, int_features, importance = self.feature.forward_with_hook(input)
+        x = self.fc(x)
+        return x, int_features, importance
 
     def Incremental_learning(self, numclass):
         weight = self.fc.weight.data

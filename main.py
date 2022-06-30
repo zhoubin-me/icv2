@@ -1,6 +1,4 @@
 from iCaRL import iCaRLmodel
-from ResNet import resnet18_cbam
-import torch
 
 numclass = 10
 backbone = "resnet18"

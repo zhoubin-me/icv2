@@ -5,7 +5,8 @@ import numpy as np
 from torch.nn import functional as F
 from PIL import Image
 import torch.optim as optim
-from myNetwork import network
+from model import Model
+from model_hook import Model
 from iCIFAR100 import iCIFAR100
 from torch.utils.data import DataLoader
 
@@ -25,7 +26,7 @@ class iCaRLmodel:
         super(iCaRLmodel, self).__init__()
         self.epochs = epochs
         self.learning_rate = learning_rate
-        self.model = network(numclass, backbone)
+        self.model = Model(numclass, backbone)
         self.exemplar_set = []
         self.class_mean_set = []
         self.numclass = numclass
@@ -180,6 +181,31 @@ class iCaRLmodel:
             old_task_size = old_target.shape[1]
             target[..., :old_task_size] = old_target
             return F.binary_cross_entropy_with_logits(output, target)
+
+    def _compute_loss_with_hook(self, indexs, imgs, target):
+        if self.old_model is None:
+            return self._compute_loss(indexs, imgs, target)
+
+        self.old_model.feature.start_cal_importance()
+        self.old_model.reset_importance()
+
+        output, features, _ = self.model.forward_with_hook(imgs)
+        output_old, features_old, importance_old = self.old_model.foward_with_hook(imgs)
+
+
+        target = F.one_hot(target, self.num_classes).float()
+        old_target = torch.sigmoid(output_old.detach())
+        old_task_size = old_target.shape[1]
+        target[..., :old_task_size] = old_target
+        ce_loss = F.binary_cross_entropy_with_logits(output, target)
+
+        importance = [(x / x.mean()).detach() for x in importance_old]
+        dist_loss = [i.view(1, -1) * torch.norm(
+            x.view(x.size(0), x.size(1), -1) - y.view(y.size(0), y.size(1), -1).detach(), p='fro', dim=())
+                     for i, x, y in zip(importance, features, features_old)]
+
+        self.old_model.feature.stop_cal_importance()
+    
 
     # change the size of examplar
     def afterTrain(self, accuracy):
