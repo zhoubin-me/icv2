@@ -18,6 +18,14 @@ model_urls = {
 }
 
 
+def gradhook(self, grad_input, grad_output):
+    importance = grad_output[0] ** 2 # [N, C, H, W]
+    if len(importance.shape) == 4:
+        importance = torch.sum(importance, 3) # [N, C, H]
+        importance = torch.sum(importance, 2) # [N, C]
+    importance = torch.mean(importance, 0) # [C]
+    self.importance += importance
+
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
@@ -230,7 +238,7 @@ class ResNet(nn.Module):
         return x
 
 
-    def forwar_with_hook(self, x):
+    def forward_with_hook(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -252,7 +260,7 @@ class ResNet(nn.Module):
         int_features.append(x)
         x = self.layer4_importance(x)
 
-        x = self.avgpool(x)
+        x = self.feature(x)
         x = x.view(x.size(0), -1)
         x = self.raw_features_importance(x)
 
@@ -393,3 +401,22 @@ class Model(nn.Module):
 
     def feature_extractor(self, inputs):
         return self.feature(inputs)
+
+
+if __name__ == '__main__':
+    model = Model(100, 'resnet18')
+
+    for _ in range(10):
+        x = torch.rand(16, 3, 32, 32)
+        y = torch.randint(0, 50, size=(16,))
+
+        model.feature.start_cal_importance()
+        model.feature.reset_importance()
+        output, features, importance = model.forward_with_hook(x)
+        loss = nn.functional.cross_entropy(output, y)
+        loss.backward()
+        
+        print([x.abs().sum() for x in importance])
+
+        model.feature.stop_cal_importance()
+

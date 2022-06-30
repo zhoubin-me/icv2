@@ -139,15 +139,20 @@ class iCaRLmodel:
                         p['lr'] = self.learning_rate / 125
                     #opt = optim.SGD(self.model.parameters(), lr=self.learning_rate / 125,weight_decay=0.00001,momentum=0.9,nesterov=True,)
                 print("change learning rate:%.3f" % (self.learning_rate / 100))
+            
             for step, (indexs, images, target) in enumerate(self.train_loader):
                 images, target = images.to(device), target.to(device)
-                #output = self.model(images)
-                loss_value = self._compute_loss(indexs, images, target)
+                # loss_value = self._compute_loss(indexs, images, target)
+
+                ce_loss, dist_loss = self._compute_loss_with_hook(indexs, images, target)
+                loss_value = ce_loss + dist_loss
+
                 opt.zero_grad()
                 loss_value.backward()
                 opt.step()
-                print('epoch:%d,step:%d,loss:%.3f' %
-                      (epoch, step, loss_value.item()))
+
+                print(f"epoch: {epoch:3d}, step {step:3d}, ce_loss {ce_loss.item():6.3f}, dist_loss {dist_loss.item():6.3f}, total_loss {loss_value.item():6.3f}")
+                
             accuracy = self._test(self.test_loader, 1)
             print('epoch:%d,accuracy:%.3f' % (epoch, accuracy))
         return accuracy
@@ -187,24 +192,28 @@ class iCaRLmodel:
             return self._compute_loss(indexs, imgs, target)
 
         self.old_model.feature.start_cal_importance()
-        self.old_model.reset_importance()
+        self.old_model.feature.reset_importance()
+        output_old, features_old, importance_old = self.old_model.foward_with_hook(imgs)
+        old_ce_loss = F.cross_entropy(output_old, target)
+        old_ce_loss.backward()
+        importance_old = [(x / x.mean()).detach() for x in importance_old]
+        features_old = [x.detach() for x in features_old]
+        self.old_model.feature.stop_cal_importance()
+
 
         output, features, _ = self.model.forward_with_hook(imgs)
-        output_old, features_old, importance_old = self.old_model.foward_with_hook(imgs)
-
-
-        target = F.one_hot(target, self.num_classes).float()
+        one_hot_label = get_one_hot(target, self.numclass)
         old_target = torch.sigmoid(output_old.detach())
         old_task_size = old_target.shape[1]
-        target[..., :old_task_size] = old_target
-        ce_loss = F.binary_cross_entropy_with_logits(output, target)
+        one_hot_label[..., :old_task_size] = old_target
+        ce_loss = F.binary_cross_entropy_with_logits(output, one_hot_label)
 
-        importance = [(x / x.mean()).detach() for x in importance_old]
-        dist_loss = [i.view(1, -1) * torch.norm(
-            x.view(x.size(0), x.size(1), -1) - y.view(y.size(0), y.size(1), -1).detach(), p='fro', dim=())
-                     for i, x, y in zip(importance, features, features_old)]
+        B = output.size(0)
+        dist_loss = [z.view(1, -1) * torch.norm(x.view(B, x.size(1), -1) - y.view(B, y.size(1), -1), p='fro', dim=(-1))
+            for x, y, z in zip(features, features_old, importance_old)]
+        dist_loss = sum([x.mean(dim=0).sum() for x in dist_loss])
+        return ce_loss, dist_loss
 
-        self.old_model.feature.stop_cal_importance()
     
 
     # change the size of examplar
